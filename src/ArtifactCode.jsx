@@ -120,7 +120,6 @@ const DeliveryOptionsTimeline = () => {
   const svgHeight = 400;
   const timelineY = 50;
   const optionLineStartY = 80;
-  const optionLineHeight = 2;
 
   const getXPosition = (date) => {
     const secondsFromStart = differenceInSeconds(date, startDate);
