@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { format, parseISO, differenceInDays, differenceInHours, startOfDay, addDays, min, max } from 'date-fns';
+import { format, parseISO, differenceInDays, differenceInSeconds, startOfDay, addDays, min, max, isAfter } from 'date-fns';
 
+
+const initialDate = new Date(2024, 8, 27, 7, 40); // Month is 0-indexed
 const deliveryOptions = [
   {
     "arrival_date": "2024-09-29",
@@ -105,6 +107,13 @@ const DeliveryOptionsTimeline = () => {
   const startDate = startOfDay(min(deliveryOptions.map(option => parseISO(option.cutoff))));
   const endDate = startOfDay(addDays(max(deliveryOptions.map(option => parseISO(option.arrival_date))), 1));
 
+  // Calculate initial slider value to initial date.
+  const totalSeconds = differenceInSeconds(endDate, startDate);
+  const initialSeconds = differenceInSeconds(initialDate, startDate);
+  const initialSliderValue = (initialSeconds / totalSeconds) * 100;
+
+  const [sliderValue, setSliderValue] = useState(initialSliderValue);
+
   const daysInRange = differenceInDays(endDate, startDate);
   const dayWidth = 100;
   const svgWidth = daysInRange * dayWidth;
@@ -114,9 +123,16 @@ const DeliveryOptionsTimeline = () => {
   const optionLineHeight = 2;
 
   const getXPosition = (date) => {
-    const hours = differenceInHours(date, startDate);
-    return (hours / 24) * dayWidth;
+    const secondsFromStart = differenceInSeconds(date, startDate);
+    return (secondsFromStart / totalSeconds) * svgWidth;
   };
+
+  const getCurrentDate = () => {
+    const currentSeconds = (sliderValue / 100) * totalSeconds;
+    return new Date(startDate.getTime() + currentSeconds * 1000);
+  };
+
+  const currentDate = getCurrentDate();
 
   const colorMap = generateColorMap(deliveryOptions);
 
@@ -137,12 +153,21 @@ const DeliveryOptionsTimeline = () => {
     };
   }, []);
 
+  const isDatePastAllCutoffs = (date) => {
+    const arrivalDate = startOfDay(date);
+    const relevantOptions = deliveryOptions.filter(option =>
+      startOfDay(parseISO(option.arrival_date)).getTime() === arrivalDate.getTime()
+    );
+    return relevantOptions.every(option => isAfter(currentDate, parseISO(option.cutoff)));
+  };
+
   const renderTimeline = () => {
     return Array.from({ length: daysInRange }).map((_, index) => {
       const date = addDays(startDate, index);
       const x = index * dayWidth;
+      const isPastAllCutoffs = isDatePastAllCutoffs(date);
       return (
-        <g key={index}>
+        <g key={index} opacity={isPastAllCutoffs ? 0.3 : 1}>
           <line x1={x} y1={timelineY} x2={x} y2={svgHeight} stroke="#ccc" />
           <text x={x + 5} y={timelineY - 5} className="dayLabel">{format(date, 'EEE')}</text>
           <text x={x + 5} y={timelineY - 20} className="dayLabel">{format(date, 'MMM d')}</text>
@@ -161,6 +186,8 @@ const DeliveryOptionsTimeline = () => {
       const y = optionLineStartY + index * 15;
       const color = colorMap[option.arrival_date];
 
+      const isPast = isAfter(currentDate, cutoffDate);
+
       return (
         <g key={index}>
           <line
@@ -170,12 +197,14 @@ const DeliveryOptionsTimeline = () => {
             y2={y}
             className="deliveryOption"
             stroke={color}
+            opacity={isPast ? 0.3 : 1}
           />
           <circle
             cx={startX}
             cy={y}
             r={4}
             fill={color}
+            opacity={isPast ? 0.3 : 1}
             onMouseEnter={() => setHoveredOption(option)}
             onMouseLeave={() => setHoveredOption(null)}
           />
@@ -184,12 +213,18 @@ const DeliveryOptionsTimeline = () => {
     });
   };
 
+  const handleSliderChange = (e) => {
+    setSliderValue(parseFloat(e.target.value));
+  };
+
+  const currentDateX = getXPosition(currentDate);
+
   return (
     <div className="relative">
-      <svg 
+      <svg
         ref={svgRef}
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`} 
-        width="100%" 
+        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+        width="100%"
         height="auto"
       >
         <style>
@@ -203,9 +238,29 @@ const DeliveryOptionsTimeline = () => {
         <line x1={0} y1={timelineY} x2={svgWidth} y2={timelineY} stroke="black" />
         {renderTimeline()}
         {renderDeliveryOptions()}
+        <line
+          x1={currentDateX}
+          y1={0}
+          x2={currentDateX}
+          y2={svgHeight}
+          stroke="red"
+          strokeWidth="2"
+        />
       </svg>
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="0.1"
+        value={sliderValue}
+        onChange={handleSliderChange}
+        className="w-full"
+      />
+      <div className="text-center">
+        Current Date: {format(currentDate, 'EEE MMM d, HH:mm')}
+      </div>
       {hoveredOption && (
-        <div 
+        <div
           className="absolute bg-white p-2 border border-gray-300 rounded shadow"
           style={{
             left: `${mousePos.x + 10}px`,
